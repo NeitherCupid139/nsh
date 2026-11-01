@@ -96,7 +96,7 @@ jobs:
   homebrew:
     name: Update Homebrew tap
     needs: check
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && (github.repository == 'longbridge/nsh' || secrets.HOMEBREW_TAP_TOKEN != '')
     runs-on: ubuntu-latest
     # Serialize writers, including manual reruns, then check the tap's current
     # version so an older run cannot overwrite a newer published formula.

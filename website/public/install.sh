@@ -5,13 +5,14 @@
 #   curl -fsSL https://nsh.dev/install.sh | sh -s -- --source
 #
 # NSH_VERSION      a release tag such as v0.1.0 (default: the latest release)
+# NSH_REPO         GitHub repository owner/repo (default: NeitherCupid139/nsh)
 # NSH_INSTALL_DIR  where the distribution goes (default: ~/.nsh); nsh finds
 #                  its runtimes next to bin/nsh, so the directory stays whole
 #
 # `nsh` is linked into ~/.local/bin. Running the script again updates it.
 set -eu
 
-repository="longbridge/nsh"
+repository="${NSH_REPO:-NeitherCupid139/nsh}"
 dir="${NSH_INSTALL_DIR:-$HOME/.nsh}"
 bin="$HOME/.local/bin"
 version="${NSH_VERSION:-latest}"

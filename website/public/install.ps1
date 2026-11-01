@@ -3,6 +3,7 @@
 #   irm https://nsh.dev/install.ps1 | iex
 #
 # $env:NSH_VERSION      a release tag such as v0.1.0 (default: the latest release)
+# $env:NSH_REPO         GitHub repository owner/repo (default: NeitherCupid139/nsh)
 # $env:NSH_INSTALL_DIR  where the distribution goes (default: %LOCALAPPDATA%\nsh);
 #                       nsh finds its runtimes next to bin\nsh.exe, so the
 #                       directory stays whole
@@ -13,7 +14,7 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$repository = 'longbridge/nsh'
+$repository = if ($env:NSH_REPO) { $env:NSH_REPO } else { 'NeitherCupid139/nsh' }
 $dir = if ($env:NSH_INSTALL_DIR) { $env:NSH_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'nsh' }
 $version = if ($env:NSH_VERSION) { $env:NSH_VERSION } else { 'latest' }
 

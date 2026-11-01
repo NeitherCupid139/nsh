@@ -28,9 +28,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v0.1.0); empty: build only"
+        description: "Tag to release (e.g. v0.3.1); empty: build only"
         required: false
         type: string
+      draft:
+        description: "Create draft release (default false: publish immediately)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -68,8 +73,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # A release run builds the tag, never the branch it was started on.
-          ref: ${{ env.TAG || github.ref }}
+          # A release run builds the tag when triggered by a tag, or the current commit.
+          ref: ${{ (github.ref_type == 'tag' && github.ref) || github.sha }}
 
       - name: Check the version
         if: env.TAG != ''
@@ -243,7 +248,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ (github.ref_type == 'tag' && github.ref) || github.sha }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -257,19 +262,24 @@ jobs:
       - name: Add the installers and the Scoop manifest
         run: |
           cp website/public/install.sh website/public/install.ps1 assets/
-          read -r hash _ < assets/nsh-windows-x86_64.zip.sha256
-          # shellcheck disable=SC2016 # envsubst's list of variables
-          NSH_VERSION="${TAG#v}" NSH_HASH="$hash" NSH_REPO="$GITHUB_REPOSITORY" \
-            envsubst '$NSH_VERSION $NSH_HASH $NSH_REPO' < .github/packages/nsh.json > assets/nsh.json
-          cat assets/nsh.json
+          sed -i.bak "s|repository=\"longbridge/nsh\"|repository=\"\${NSH_REPO:-$GITHUB_REPOSITORY}\"|g" assets/install.sh && rm -f assets/install.sh.bak
+          sed -i.bak "s|\$repository = 'longbridge/nsh'|\$repository = if (\$env:NSH_REPO) { \$env:NSH_REPO } else { '$GITHUB_REPOSITORY' }|g" assets/install.ps1 && rm -f assets/install.ps1.bak
+          if [[ -f assets/nsh-windows-x86_64.zip.sha256 ]]; then
+            read -r hash _ < assets/nsh-windows-x86_64.zip.sha256
+            # shellcheck disable=SC2016 # envsubst's list of variables
+            NSH_VERSION="${TAG#v}" NSH_HASH="$hash" NSH_REPO="$GITHUB_REPOSITORY" \
+              envsubst '$NSH_VERSION $NSH_HASH $NSH_REPO' < .github/packages/nsh.json > assets/nsh.json
+            cat assets/nsh.json
+          fi
 
-      # Created only after every platform has built; a draft until it is
-      # published by hand.
+      # Created only after every platform has built; published directly unless draft is requested.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           name: nsh ${{ env.TAG }}
-          draft: true
+          draft: ${{ inputs.draft == true }}
+          prerelease: false
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: assets/*
