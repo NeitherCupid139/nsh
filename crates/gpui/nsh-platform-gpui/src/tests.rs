@@ -52,6 +52,17 @@ function App() {
 mount(App);
 "#;
 
+/// A focused field that shows the app's state.
+const LIFECYCLE_FIELD: &str = r#"
+import { lifecycle, mount } from "nsh";
+import { Input } from "nsh/base";
+
+function App() {
+  return <Input autoFocus value={lifecycle()} style={{ height: 30 }} />;
+}
+mount(App);
+"#;
+
 /// A focused field that logs its input method's compositions and sets
 /// values while they are in progress: "held" on "ni" (applied once the
 /// composition is cancelled), "stale" on "hao" (dropped, as "好" is
@@ -188,6 +199,8 @@ fn windows(cx: &mut TestAppContext) {
     an_auto_hidden_menu_bar_shows_on_alt_alone_and_while_a_menu_is_open(cx);
     asset_uris_resolve_in_the_first_directory_that_has_the_file(cx);
     releasing_shift_before_alt_keeps_the_auto_hidden_menu_bar_hidden(cx);
+    the_app_s_state_follows_its_window_s_activation_and_visibility(cx);
+    set_frame_sizes_the_window_and_keeps_the_size_it_leaves_out(cx);
 }
 
 fn keys_reach_the_fields_of_a_surface_showing_a_native_component(cx: &mut TestAppContext) {
@@ -1338,4 +1351,82 @@ fn click(cx: &mut VisualTestContext, position: gpui::Point<gpui::Pixels>, count:
         modifiers,
         click_count: count,
     });
+}
+
+fn the_app_s_state_follows_its_window_s_activation_and_visibility(cx: &mut TestAppContext) {
+    let code = nsh_bundler::compile_module("App.tsx", LIFECYCLE_FIELD, &[]).unwrap();
+    let (view, cx) =
+        cx.add_window_view(|window, cx| AppView::new(AppOptions::default(), window, cx));
+    view.update(cx, |view, _| view.load(App::Js(Bundle::source(code))));
+    cx.update(|window, cx| {
+        window.activate_window();
+        window.focus(&view.focus_handle(cx), cx);
+    });
+    wait_for(&view, cx, "active");
+    cx.deactivate_window();
+    wait_for(&view, cx, "inactive");
+    cx.simulate_visibility_change(gpui::WindowVisibility::Hidden);
+    wait_for(&view, cx, "background");
+    cx.simulate_visibility_change(gpui::WindowVisibility::Visible);
+    wait_for(&view, cx, "inactive");
+    cx.update(|window, _| window.activate_window());
+    wait_for(&view, cx, "active");
+}
+
+/// A window the app sizes at start, and resizes from the menu.
+const SIZED_WINDOW: &str = r#"
+import { mount, View } from "nsh";
+import { Input } from "nsh/base";
+import { Menu, Window } from "nsh/desktop";
+
+function App() {
+  Window.setFrame({ size: { width: 640, height: 480 } });
+  Menu.setApplicationMenu([
+    {
+      label: "View",
+      submenu: [
+        { label: "Narrow", shortcut: "mod+shift+n", onSelect: () => Window.setFrame({ size: { width: 500 } }) },
+        {
+          label: "Both",
+          shortcut: "mod+shift+b",
+          onSelect: () => {
+            Window.setFrame({ size: { width: 600 } });
+            Window.setFrame({ size: { height: 400 } });
+          },
+        },
+      ],
+    },
+  ]);
+  return (
+    <View style={{ flex: 1 }}>
+      <Input autoFocus value="sized" style={{ height: 30 }} />
+    </View>
+  );
+}
+mount(App);
+"#;
+
+fn set_frame_sizes_the_window_and_keeps_the_size_it_leaves_out(cx: &mut TestAppContext) {
+    let code = nsh_bundler::compile_module("App.tsx", SIZED_WINDOW, &[]).unwrap();
+    let (view, cx) = owned_view(cx, code, |_| {});
+    wait_for(&view, cx, "sized");
+    let size = |cx: &mut VisualTestContext| {
+        cx.update(|window, _| {
+            let size = window.bounds().size;
+            (f32::from(size.width), f32::from(size.height))
+        })
+    };
+    wait_until_window(cx, "the window at 640x480", |cx| size(cx) == (640.0, 480.0));
+    let primary = if cfg!(target_os = "macos") {
+        "cmd"
+    } else {
+        "ctrl"
+    };
+    cx.simulate_keystrokes(&format!("shift-{primary}-n"));
+    wait_until_window(cx, "the window at 500x480", |cx| size(cx) == (500.0, 480.0));
+    // Two calls in one callback: the second keeps the first's width, which
+    // GPUI's test platform applies at once (`chrome::frame_size` takes the
+    // platforms that do not).
+    cx.simulate_keystrokes(&format!("shift-{primary}-b"));
+    wait_until_window(cx, "the window at 600x400", |cx| size(cx) == (600.0, 400.0));
 }
