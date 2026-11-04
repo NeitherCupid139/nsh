@@ -883,11 +883,16 @@ runtimes and the iOS SDK), Linux and Windows (x86_64), each with the GPUI develo
 makes and bundles a new app, and archives `dist/nsh` as one directory `nsh/` in `nsh-<platform>.tar.gz` (`.zip` on
 Windows), plus the embedding SDKs alone (`nsh-embed-ios.zip`, `nsh-embed-android.zip`), each with a `.sha256`. Asset
 names carry no version, so `releases/latest/download/<asset>` always resolves; the installers and package managers
-rely on that. To release, set `version` in the root `Cargo.toml`, push the tag `v<version>` (a tag that does not
-match fails the run) and publish the draft release the run creates once every platform has built. Running the
-workflow by hand without a tag builds the archives only (the run's artifacts): a dry run before tagging, and how to
-check a change to the workflow or to how xtask builds the distribution (`dist.rs`, `android.rs`, `ios.rs`). Pull
-requests and the merge queue never run it: its three builds are CI's longest and held the runners the queue waited for. The binaries are not signed: macOS quarantines downloads from a browser (`xattr -dr
+rely on that. To release, set `version` in the root `Cargo.toml` and push the tag `v<version>` (a tag that does not
+match fails the run): the release appears once every platform has built. A run started by hand with `draft` creates
+it as a draft to publish after checking it. Running the workflow by hand without a tag builds the archives only (the
+run's artifacts): a dry run before tagging, and how to check a change to the workflow or to how xtask builds the
+distribution (`dist.rs`, `android.rs`, `ios.rs`). The three builds install
+[huacnlee/cargo](https://github.com/huacnlee/cargo), whose build directory holds one directory per project plus
+`shared-deps` shared by every project, and cache `~/.cargo/targets`: a run starts from the dependencies the previous
+release compiled instead of building every crate again, and the run continues with the stock Cargo when the installer
+fails. Pull requests and the merge queue never run it: its three builds are CI's longest and held the runners the
+queue waited for. The binaries are not signed: macOS quarantines downloads from a browser (`xattr -dr
 com.apple.quarantine nsh`), and the Linux runtime needs glibc 2.39 and GTK 4.14 or newer (Ubuntu 24.04 and later).
 
 The same tag runs `.github/workflows/release-crate.yml`, which publishes the library crates to crates.io (secret
