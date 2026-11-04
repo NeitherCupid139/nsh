@@ -5,12 +5,12 @@ name: Release
 # GitHub release.
 #
 # - Pushing a tag `vX.Y.Z` (the workspace version in Cargo.toml) builds every
-#   platform and, once all of them have built, creates a draft release with
-#   their archives; publish it from the releases page.
+#   platform and, once all of them have built, publishes a release with their
+#   archives. The `draft` input of a manual run creates one to check first.
 # - Running it by hand without a tag builds the archives only (workflow
 #   artifacts): a dry run before tagging, and the check of a change to this
 #   workflow or to how xtask builds the distribution. With a tag it releases
-#   that tag.
+#   that tag, which the release creates when it is not pushed yet.
 #
 # Pull requests and the merge queue never run it: its three builds are CI's
 # longest and held the runners every queued pull request waited for.
@@ -20,7 +20,11 @@ name: Release
 # installers (`website/public/install.sh`, `install.ps1`, also attached to
 # each release), mise's `github:` backend and the Scoop manifest download by
 # that name. Every archive holds one directory, `nsh/`, laid out as
-# `dist/nsh`. Publishing the draft runs `packages.yml` (Homebrew).
+# `dist/nsh`. Publishing a release runs `packages.yml` (Homebrew).
+#
+# The three builds install huacnlee/cargo, whose build directory is one per
+# project plus `shared-deps` shared by every project, and cache it: a run
+# reuses the dependencies the previous release compiled.
 
 on:
   push:
@@ -180,15 +184,50 @@ jobs:
           echo "CC_wasm32_unknown_unknown=$cc" >> "$GITHUB_ENV"
           echo "AR_wasm32_unknown_unknown=$ar" >> "$GITHUB_ENV"
 
+      # huacnlee/cargo, a Cargo drop-in whose build directory is one per
+      # project plus `shared-deps` shared by every project — registry and git
+      # dependencies compiled once, keyed by version, features and profile.
+      # With `~/.cargo/targets` cached below, a run starts from the units the
+      # previous release compiled instead of building every crate again.
+      # Binaries still appear in `./target`, where `xtask dist` reads them.
+      # A failed install leaves the stock Cargo in place: a third-party
+      # outage delays no release, it only costs the cache.
+      - name: Use the shared-build Cargo
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://huacnlee.github.io/cargo/install.sh | sh ||
+            echo "::warning::huacnlee/cargo is not installed; the stock Cargo builds this release"
+          cargo -V
+
+      - name: Use the shared-build Cargo
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          try { irm https://huacnlee.github.io/cargo/install.ps1 | iex }
+          catch { Write-Warning "huacnlee/cargo is not installed; the stock Cargo builds this release" }
+          cargo -V
+
+      # One cache entry per platform inside GitHub's 10 GiB per repository:
+      # the fork keeps up to 50 GiB of shared dependencies by default.
+      - name: Bound the build directory
+        run: |
+          config="${CARGO_HOME:-$HOME/.cargo}/config.toml"
+          mkdir -p "$(dirname "$config")"
+          if ! grep -q '^\[build\.gc\]' "$config" 2> /dev/null; then
+            printf '\n[build.gc]\nshared-max-size = "4 GiB"\n' >> "$config"
+          fi
+          cat "$config"
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-release-cargo-${{ hashFiles('Cargo.lock') }}
+            ~/.cargo/targets
+          key: ${{ runner.os }}-release-cargo-v2-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-release-cargo-
+            ${{ runner.os }}-release-cargo-v2-
 
       - name: Build the distribution
         run: cargo xtask dist -v
